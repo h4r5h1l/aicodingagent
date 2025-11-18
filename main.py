@@ -43,17 +43,37 @@ def main():
             system_instruction=system_prompt,
             tools=[available_functions]
             )
-        response = client.models.generate_content(model='gemini-2.0-flash-001', contents=messages, config=configs)
-        if "--verbose" in sys.argv:
-            print(f"User prompt: {user_prompt}")
-            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-        if response.function_calls:
-            for call in response.function_calls:
-                function_call_result = call_function(call, verbose="--verbose" in sys.argv)
+        
+        max_iterations = 20
+        while max_iterations > 0:
+            max_iterations -= 1
+            try:
+                response = client.models.generate_content(model='gemini-2.0-flash-001', contents=messages, config=configs)
+                if response.function_calls:
+                    for candidate in response.candidates:
+                        messages.append(candidate.content)
+                        print(f"model: {candidate.content.parts[0].text}")
+
+                    for call in response.function_calls:
+                        function_call_result = call_function(call, verbose="--verbose" in sys.argv)
+                        if "--verbose" in sys.argv:
+                            print(f"-> {function_call_result.parts[0].function_response.response}")
+                        messages.append(types.Content(role="user", parts=function_call_result.parts))
+                # if no candidate contains function call and response.text is not empty, break
+                elif response.text:
+                    print(response.text)
+                    messages.append(types.Content(role="model", parts=[types.Part(text=response.text)]))
+                    break
                 if "--verbose" in sys.argv:
-                    print(f"-> {function_call_result.parts[0].function_response.response}")
-        print(response.text)
+                    print(f"User prompt: {user_prompt}")
+                    print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+                    print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+            except Exception as e:
+                print(f"Error occurred: {e}")
+                break
+            
+
+
     else:
         print("No Prompt Found!, exiting program...")
         sys.exit(1)
